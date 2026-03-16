@@ -38,7 +38,16 @@ const Slider = ({ min, max, step, value, onValueChange }: any) => (
   />
 );
 
-import { Play, Pause, RotateCcw, SkipForward, Monitor, Maximize } from "lucide-react";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  SkipForward,
+  Monitor,
+  Maximize,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Message = {
@@ -308,13 +317,21 @@ export default function EurekaDayChatSimulator() {
   const [isProjectionMode, setIsProjectionMode] = useState(false);
   const [projectionNotice, setProjectionNotice] = useState("");
 
+  const [isMuted, setIsMuted] = useState(false);
+  const [soundVolume, setSoundVolume] = useState(0.45);
+
   const timerRef = useRef<number | null>(null);
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
+  const dingRef = useRef<HTMLAudioElement | null>(null);
+  const hasInteractedRef = useRef(false);
+  const lastPlayedVisibleCountRef = useRef(0);
 
+  // Spacebar = Next Message (QLab-style operator advance)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         e.preventDefault();
+        hasInteractedRef.current = true;
         setIsPlaying(false);
         setVisibleCount((count) => Math.min(count + 1, messages.length));
       }
@@ -324,10 +341,48 @@ export default function EurekaDayChatSimulator() {
     return () => window.removeEventListener("keydown", handler);
   }, [messages.length]);
 
+  // Unlock audio after first user interaction
+  useEffect(() => {
+    const markInteracted = () => {
+      hasInteractedRef.current = true;
+    };
+
+    window.addEventListener("pointerdown", markInteracted);
+    window.addEventListener("keydown", markInteracted);
+
+    return () => {
+      window.removeEventListener("pointerdown", markInteracted);
+      window.removeEventListener("keydown", markInteracted);
+    };
+  }, []);
+
   const visibleMessages = useMemo(
     () => messages.slice(Math.max(0, visibleCount - maxOnScreen), visibleCount),
     [messages, visibleCount, maxOnScreen]
   );
+
+  const playDing = () => {
+    const audio = dingRef.current;
+    if (!audio || isMuted || soundVolume <= 0) return;
+    if (!hasInteractedRef.current) return;
+
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = soundVolume;
+      void audio.play();
+    } catch {
+      // ignore browser playback failures
+    }
+  };
+
+  // Play sound whenever a new message becomes visible
+  useEffect(() => {
+    if (visibleCount > lastPlayedVisibleCountRef.current) {
+      playDing();
+    }
+    lastPlayedVisibleCountRef.current = visibleCount;
+  }, [visibleCount, isMuted, soundVolume]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -353,11 +408,13 @@ export default function EurekaDayChatSimulator() {
   }, [visibleCount, messages.length]);
 
   const toggleFastMode = () => {
+    hasInteractedRef.current = true;
     setIsPlaying(false);
     setIsFastMode((f) => !f);
   };
 
   const toggleProjectionMode = () => {
+    hasInteractedRef.current = true;
     setIsProjectionMode((p) => !p);
   };
 
@@ -388,6 +445,8 @@ export default function EurekaDayChatSimulator() {
 
   return (
     <div className="min-h-screen bg-black p-6">
+      <audio ref={dingRef} src="/sounds/ding.mp3" preload="auto" />
+
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[380px_1fr]">
         <Card className="rounded-3xl shadow-lg">
           <CardHeader>
@@ -396,7 +455,13 @@ export default function EurekaDayChatSimulator() {
 
           <CardContent className="space-y-6">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setIsPlaying((p) => !p)} className="rounded-2xl">
+              <Button
+                onClick={() => {
+                  hasInteractedRef.current = true;
+                  setIsPlaying((p) => !p);
+                }}
+                className="rounded-2xl"
+              >
                 {isPlaying ? (
                   <>
                     <Pause className="mr-2 h-4 w-4" /> Pause
@@ -411,6 +476,7 @@ export default function EurekaDayChatSimulator() {
               <Button
                 variant="outline"
                 onClick={() => {
+                  hasInteractedRef.current = true;
                   setIsPlaying(false);
                   setVisibleCount((count) => Math.min(count + 1, messages.length));
                 }}
@@ -438,8 +504,10 @@ export default function EurekaDayChatSimulator() {
               <Button
                 variant="outline"
                 onClick={() => {
+                  hasInteractedRef.current = true;
                   setIsPlaying(false);
                   setVisibleCount(0);
+                  lastPlayedVisibleCountRef.current = 0;
                 }}
                 className="rounded-2xl"
               >
@@ -455,7 +523,11 @@ export default function EurekaDayChatSimulator() {
                 {isProjectionMode ? "Exit Projection" : "Projection Mode"}
               </Button>
 
-              <Button variant="outline" onClick={openFullscreenChat} className="rounded-2xl">
+              <Button
+                variant="outline"
+                onClick={openFullscreenChat}
+                className="rounded-2xl"
+              >
                 <Maximize className="mr-2 h-4 w-4" /> Fullscreen Chat
               </Button>
             </div>
@@ -485,6 +557,42 @@ export default function EurekaDayChatSimulator() {
                 step={10}
                 value={[fastDelay]}
                 onValueChange={(v: number[]) => setFastDelay(v[0])}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium">
+                  Message Sound Volume: {Math.round(soundVolume * 100)}%
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    hasInteractedRef.current = true;
+                    setIsMuted((m) => !m);
+                  }}
+                  className="rounded-2xl"
+                >
+                  {isMuted ? (
+                    <>
+                      <VolumeX className="mr-2 h-4 w-4" /> Muted
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="mr-2 h-4 w-4" /> Sound On
+                    </>
+                  )}
+                </Button>
+              </div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.05}
+                value={[soundVolume]}
+                onValueChange={(v: number[]) => {
+                  hasInteractedRef.current = true;
+                  setSoundVolume(v[0]);
+                }}
               />
             </div>
 
