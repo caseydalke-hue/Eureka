@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 // Simple local UI components (removes dependency on shadcn so the app can run in any React/Vite project)
 const Button = ({ children, onClick, className = "", variant, ...props }: any) => (
   <button
@@ -284,19 +284,10 @@ function getAvatarStyle(profileColor: string) {
   };
 }
 
-function parseInput(input: string): Message[] {
-  const lines = input
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
 
-  const messages = lines.map((line, index) => parseChatLine(line, index + 1));
-  return messages.length ? messages : seedMessages;
-}
 
 export default function EurekaDayChatSimulator() {
-  const [rawInput, setRawInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>(seedMessages);
+    const [messages] = useState<Message[]>(seedMessages);
   const [visibleCount, setVisibleCount] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [baseDelay, setBaseDelay] = useState(850);
@@ -356,12 +347,6 @@ export default function EurekaDayChatSimulator() {
     if (visibleCount >= messages.length) setIsPlaying(false);
   }, [visibleCount, messages.length]);
 
-  const loadParsedChat = () => {
-    const parsed = parseInput(rawInput);
-    setMessages(parsed);
-    setVisibleCount(0);
-    setIsPlaying(false);
-  };
 
   const toggleFastMode = () => {
     setIsPlaying(false);
@@ -487,7 +472,7 @@ export default function EurekaDayChatSimulator() {
                   max={2000}
                   step={50}
                   value={[baseDelay]}
-                  onValueChange={(v) => setBaseDelay(v[0])}
+                  onValueChange={(v: number[]) => setBaseDelay(v[0])}
                 />
               </div>
 
@@ -498,7 +483,7 @@ export default function EurekaDayChatSimulator() {
                   max={500}
                   step={10}
                   value={[fastDelay]}
-                  onValueChange={(v) => setFastDelay(v[0])}
+                  onValueChange={(v: number[]) => setFastDelay(v[0])}
                 />
               </div>
 
@@ -562,7 +547,7 @@ export default function EurekaDayChatSimulator() {
                   max={32}
                   step={1}
                   value={[chatFontSize]}
-                  onValueChange={(v) => setChatFontSize(v[0])}
+                  onValueChange={(v: number[]) => setChatFontSize(v[0])}
                 />
               </div>
 
@@ -573,7 +558,7 @@ export default function EurekaDayChatSimulator() {
                   max={12}
                   step={1}
                   value={[maxOnScreen]}
-                  onValueChange={(v) => setMaxOnScreen(v[0])}
+                  onValueChange={(v: number[]) => setMaxOnScreen(v[0])}
                 />
               </div>
             </CardContent>
