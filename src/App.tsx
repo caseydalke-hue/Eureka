@@ -301,6 +301,7 @@ export default function EurekaDayChatSimulator() {
   const [bubbleTextColor, setBubbleTextColor] = useState("#1f2937");
   const [isBubbleTextBold, setIsBubbleTextBold] = useState(false);
   const [chatFontSize, setChatFontSize] = useState(15);
+  const [nameFontSize, setNameFontSize] = useState(12);
   const [chatHeightScale, setChatHeightScale] = useState(1);
   const [messageScale, setMessageScale] = useState(1);
   const [chatWidth, setChatWidth] = useState(820);
@@ -587,6 +588,17 @@ export default function EurekaDayChatSimulator() {
             </div>
 
             <div className="space-y-3">
+              <div className="text-sm font-medium">Name Font Size: {nameFontSize}px</div>
+              <Slider
+                min={10}
+                max={28}
+                step={1}
+                value={[nameFontSize]}
+                onValueChange={(v: number[]) => setNameFontSize(v[0])}
+              />
+            </div>
+
+            <div className="space-y-3">
               <div className="text-sm font-medium">Max Messages On Screen: {maxOnScreen}</div>
               <Slider
                 min={3}
@@ -674,7 +686,7 @@ export default function EurekaDayChatSimulator() {
                             className="font-semibold leading-tight"
                             style={{
                               color: bubbleTextColor,
-                              fontSize: `${chatFontSize * 0.75 * messageScale}px`,
+                              fontSize: `${nameFontSize * messageScale}px`,
                               marginBottom: `${4 * messageScale}px`,
                             }}
                           >
