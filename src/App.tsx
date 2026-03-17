@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-// Simple local UI components (removes dependency on shadcn so the app can run in any React/Vite project)
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  SkipForward,
+  Monitor,
+  Maximize,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+
+// Simple local UI components
 const Button = ({ children, onClick, className = "", variant, ...props }: any) => (
   <button
     onClick={onClick}
@@ -37,18 +49,6 @@ const Slider = ({ min, max, step, value, onValueChange }: any) => (
     className="w-full"
   />
 );
-
-import {
-  Play,
-  Pause,
-  RotateCcw,
-  SkipForward,
-  Monitor,
-  Maximize,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 type Message = {
   id: number;
@@ -332,10 +332,10 @@ export default function EurekaDayChatSimulator() {
   const timerRef = useRef<number | null>(null);
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
   const dingRef = useRef<HTMLAudioElement | null>(null);
+  const emojiRef = useRef<HTMLAudioElement | null>(null);
   const hasInteractedRef = useRef(false);
   const lastPlayedVisibleCountRef = useRef(0);
 
-  // Spacebar = Next Message (QLab-style operator advance)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -350,7 +350,6 @@ export default function EurekaDayChatSimulator() {
     return () => window.removeEventListener("keydown", handler);
   }, [messages.length]);
 
-  // Unlock audio after first user interaction
   useEffect(() => {
     const markInteracted = () => {
       hasInteractedRef.current = true;
@@ -370,8 +369,8 @@ export default function EurekaDayChatSimulator() {
     [messages, visibleCount, maxOnScreen]
   );
 
-  const playDing = () => {
-    const audio = dingRef.current;
+  const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>) => {
+    const audio = audioRef.current;
     if (!audio || isMuted || soundVolume <= 0) return;
     if (!hasInteractedRef.current) return;
 
@@ -385,13 +384,19 @@ export default function EurekaDayChatSimulator() {
     }
   };
 
-  // Play sound whenever a new message becomes visible
   useEffect(() => {
     if (visibleCount > lastPlayedVisibleCountRef.current) {
-      playDing();
+      const newMessage = messages[visibleCount - 1];
+
+      if (newMessage?.type === "reaction") {
+        playSound(emojiRef);
+      } else {
+        playSound(dingRef);
+      }
     }
+
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, isMuted, soundVolume]);
+  }, [visibleCount, isMuted, soundVolume, messages]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -445,7 +450,7 @@ export default function EurekaDayChatSimulator() {
         await chatWindowRef.current.requestFullscreen();
         setProjectionNotice("");
       }
-    } catch (error) {
+    } catch {
       setProjectionNotice(
         "Fullscreen is blocked in this preview. It should work in a normal browser tab on your own site."
       );
@@ -455,6 +460,7 @@ export default function EurekaDayChatSimulator() {
   return (
     <div className="min-h-screen bg-black p-6">
       <audio ref={dingRef} src="/sounds/ding.mp3" preload="auto" />
+      <audio ref={emojiRef} src="/sounds/emoji.mp3" preload="auto" />
 
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[380px_1fr]">
         <Card className="rounded-3xl shadow-lg">
@@ -532,11 +538,7 @@ export default function EurekaDayChatSimulator() {
                 {isProjectionMode ? "Exit Projection" : "Projection Mode"}
               </Button>
 
-              <Button
-                variant="outline"
-                onClick={openFullscreenChat}
-                className="rounded-2xl"
-              >
+              <Button variant="outline" onClick={openFullscreenChat} className="rounded-2xl">
                 <Maximize className="mr-2 h-4 w-4" /> Fullscreen Chat
               </Button>
             </div>
@@ -756,10 +758,7 @@ export default function EurekaDayChatSimulator() {
               }}
             >
               <div className={`flex-1 overflow-hidden bg-black ${isProjectionMode ? "px-6 py-6" : "px-5 py-5"}`}>
-                <div
-                  className="flex h-full flex-col justify-end"
-                  style={{ gap: `${12 * messageScale}px` }}
-                >
+                <div className="flex h-full flex-col justify-end" style={{ gap: `${12 * messageScale}px` }}>
                   <AnimatePresence initial={false}>
                     {visibleMessages.map((message) => (
                       <motion.div
