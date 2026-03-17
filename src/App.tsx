@@ -296,6 +296,15 @@ function getAvatarStyle(profileColor: string) {
   };
 }
 
+function getAvatarSrc(name: string) {
+  const formatted = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  return `/avatars/${formatted}.jpg`;
+}
+
 export default function EurekaDayChatSimulator() {
   const [messages] = useState<Message[]>(seedMessages);
   const [visibleCount, setVisibleCount] = useState(0);
@@ -659,7 +668,7 @@ export default function EurekaDayChatSimulator() {
               </div>
 
               <div className="space-y-2">
-                <div className="text-sm font-medium">Profile Color</div>
+                <div className="text-sm font-medium">Profile Color (fallback)</div>
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
@@ -768,15 +777,42 @@ export default function EurekaDayChatSimulator() {
                         style={{ gap: `${12 * messageScale}px` }}
                       >
                         <div
-                          className="flex shrink-0 items-center justify-center rounded-full font-bold"
+                          className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
                           style={{
-                            ...getAvatarStyle(profileColor),
                             width: `${40 * messageScale}px`,
                             height: `${40 * messageScale}px`,
-                            fontSize: `${12 * messageScale}px`,
+                            border: "1px solid rgba(0,0,0,0.18)",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                            backgroundColor: profileColor,
                           }}
                         >
-                          {getInitials(message.name)}
+                          <img
+                            src={getAvatarSrc(message.name)}
+                            alt={message.name}
+                            className="h-full w-full object-cover"
+                            draggable={false}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = "none";
+                              const fallback = target.nextElementSibling as HTMLElement | null;
+                              if (fallback) fallback.style.display = "flex";
+                            }}
+                          />
+
+                          <div
+                            style={{
+                              ...getAvatarStyle(profileColor),
+                              width: "100%",
+                              height: "100%",
+                              display: "none",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: `${12 * messageScale}px`,
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {getInitials(message.name)}
+                          </div>
                         </div>
 
                         <div
