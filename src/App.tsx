@@ -5,7 +5,6 @@ import {
   RotateCcw,
   SkipForward,
   Monitor,
-  Maximize,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -56,6 +55,30 @@ type Message = {
   text: string;
   type?: "text" | "reaction";
 };
+
+type SharedPresentationState = {
+  visibleCount: number;
+  isPlaying: boolean;
+  baseDelay: number;
+  maxOnScreen: number;
+  isFastMode: boolean;
+  fastDelay: number;
+  bubbleColor: string;
+  profileColor: string;
+  bubbleTextColor: string;
+  isBubbleTextBold: boolean;
+  chatFontSize: number;
+  nameFontSize: number;
+  chatHeightScale: number;
+  messageScale: number;
+  chatWidth: number;
+  isProjectionMode: boolean;
+  isMuted: boolean;
+  soundVolume: number;
+};
+
+const PRESENTATION_STORAGE_KEY = "eureka-day-chat-presentation-state";
+const PRESENTATION_CHANNEL_NAME = "eureka-day-chat-presentation-channel";
 
 const knownNames = [
   "Lena Birnbaum-Gerstein",
@@ -305,29 +328,265 @@ function getAvatarSrc(name: string) {
   return `/avatars/${formatted}.jpg`;
 }
 
+function getAppMode(): "editor" | "display" | "control" {
+  if (typeof window === "undefined") return "editor";
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("mode");
+  if (mode === "display") return "display";
+  if (mode === "control") return "control";
+  return "editor";
+}
+
+function buildSharedStateFromValues(values: SharedPresentationState): SharedPresentationState {
+  return { ...values };
+}
+
+function readSharedState(fallback: SharedPresentationState): SharedPresentationState {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(PRESENTATION_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return { ...fallback, ...parsed };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSharedState(next: SharedPresentationState) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PRESENTATION_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function renderChatFeed({
+  visibleMessages,
+  visibleCount,
+  messagesLength,
+  chatWidth,
+  chatHeightScale,
+  isProjectionMode,
+  messageScale,
+  profileColor,
+  bubbleColor,
+  bubbleTextColor,
+  nameFontSize,
+  chatFontSize,
+  isBubbleTextBold,
+  chatWindowRef,
+}: {
+  visibleMessages: Message[];
+  visibleCount: number;
+  messagesLength: number;
+  chatWidth: number;
+  chatHeightScale: number;
+  isProjectionMode: boolean;
+  messageScale: number;
+  profileColor: string;
+  bubbleColor: string;
+  bubbleTextColor: string;
+  nameFontSize: number;
+  chatFontSize: number;
+  isBubbleTextBold: boolean;
+  chatWindowRef?: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div
+      ref={chatWindowRef}
+      className={
+        isProjectionMode
+          ? "bg-black min-h-screen w-full flex items-center justify-center overflow-hidden"
+          : "bg-[#f5f7fb] p-5 shadow-xl ring-1 ring-black/5 flex items-center justify-center overflow-hidden"
+      }
+    >
+      <div
+        className="flex w-full items-center justify-center overflow-hidden"
+        style={{
+          minHeight: isProjectionMode ? "100vh" : "45vh",
+          padding: isProjectionMode ? "2vh 2vw" : "0",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          className="flex flex-col overflow-hidden border border-neutral-800 bg-black shadow-2xl"
+          style={{
+            width: `min(${chatWidth}px, 96vw)`,
+            height: isProjectionMode
+              ? `min(${780 * chatHeightScale}px, 94vh)`
+              : `min(${420 * chatHeightScale}px, 45vh)`,
+            maxWidth: "96vw",
+            maxHeight: isProjectionMode ? "94vh" : "45vh",
+          }}
+        >
+          <div className={`flex-1 overflow-hidden bg-black ${isProjectionMode ? "px-6 py-6" : "px-5 py-5"}`}>
+            <div className="flex h-full flex-col justify-end" style={{ gap: `${12 * messageScale}px` }}>
+              <AnimatePresence initial={false}>
+                {visibleMessages.map((message) => (
+                  <motion.div
+                    layout
+                    key={message.id}
+                    initial={{ opacity: 0, y: 28, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    transition={{
+                      duration: 0.7,
+                      ease: [0.22, 1, 0.36, 1],
+                      layout: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
+                    }}
+                    className="flex items-start"
+                    style={{ gap: `${12 * messageScale}px` }}
+                  >
+                    <div
+                      className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
+                      style={{
+                        width: `${40 * messageScale}px`,
+                        height: `${40 * messageScale}px`,
+                        border: "1px solid rgba(0,0,0,0.18)",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                        backgroundColor: profileColor,
+                      }}
+                    >
+                      <img
+                        src={getAvatarSrc(message.name)}
+                        alt={message.name}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = "none";
+                          const fallback = target.nextElementSibling as HTMLElement | null;
+                          if (fallback) fallback.style.display = "flex";
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          ...getAvatarStyle(profileColor),
+                          width: "100%",
+                          height: "100%",
+                          display: "none",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: `${12 * messageScale}px`,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {getInitials(message.name)}
+                      </div>
+                    </div>
+
+                    <div
+                      className="min-w-0 max-w-[78%] shadow-sm ring-1 ring-black/5"
+                      style={{
+                        backgroundColor: bubbleColor,
+                        borderRadius: `${24 * messageScale}px`,
+                        paddingLeft: `${16 * messageScale}px`,
+                        paddingRight: `${16 * messageScale}px`,
+                        paddingTop: `${12 * messageScale}px`,
+                        paddingBottom: `${12 * messageScale}px`,
+                      }}
+                    >
+                      <div
+                        className="font-semibold leading-tight"
+                        style={{
+                          color: bubbleTextColor,
+                          fontSize: `${nameFontSize * messageScale}px`,
+                          marginBottom: `${4 * messageScale}px`,
+                        }}
+                      >
+                        {message.name}
+                      </div>
+
+                      <div
+                        className="leading-snug"
+                        style={{
+                          color: bubbleTextColor,
+                          fontWeight: isBubbleTextBold ? 700 : 400,
+                          fontSize: `${
+                            (message.type === "reaction" ? chatFontSize * 1.5 : chatFontSize) *
+                            messageScale
+                          }px`,
+                          lineHeight: message.type === "reaction" ? 1 : 1.35,
+                        }}
+                      >
+                        {message.text}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {!isProjectionMode && (
+            <div className="border-t border-neutral-800 bg-black px-5 py-3 text-sm text-neutral-400">
+              Showing {visibleCount} of {messagesLength} messages
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EurekaDayChatSimulator() {
+  const mode = getAppMode();
   const [messages] = useState<Message[]>(seedMessages);
-  const [visibleCount, setVisibleCount] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [baseDelay, setBaseDelay] = useState(850);
 
-  const [maxOnScreen, setMaxOnScreen] = useState(8);
-  const [isFastMode, setIsFastMode] = useState(false);
-  const [fastDelay, setFastDelay] = useState(180);
-  const [bubbleColor, setBubbleColor] = useState("#f5f5f5");
-  const [profileColor, setProfileColor] = useState("#93c5fd");
-  const [bubbleTextColor, setBubbleTextColor] = useState("#1f2937");
-  const [isBubbleTextBold, setIsBubbleTextBold] = useState(false);
-  const [chatFontSize, setChatFontSize] = useState(15);
-  const [nameFontSize, setNameFontSize] = useState(12);
-  const [chatHeightScale, setChatHeightScale] = useState(1);
-  const [messageScale, setMessageScale] = useState(1);
-  const [chatWidth, setChatWidth] = useState(820);
-  const [isProjectionMode, setIsProjectionMode] = useState(false);
+  const defaultSharedState = useMemo<SharedPresentationState>(
+    () => ({
+      visibleCount: 0,
+      isPlaying: false,
+      baseDelay: 850,
+      maxOnScreen: 8,
+      isFastMode: false,
+      fastDelay: 180,
+      bubbleColor: "#f5f5f5",
+      profileColor: "#93c5fd",
+      bubbleTextColor: "#1f2937",
+      isBubbleTextBold: false,
+      chatFontSize: 15,
+      nameFontSize: 12,
+      chatHeightScale: 1,
+      messageScale: 1,
+      chatWidth: 820,
+      isProjectionMode: false,
+      isMuted: false,
+      soundVolume: 0.45,
+    }),
+    []
+  );
+
+  const [visibleCount, setVisibleCount] = useState(() => readSharedState(defaultSharedState).visibleCount);
+  const [isPlaying, setIsPlaying] = useState(() => readSharedState(defaultSharedState).isPlaying);
+  const [baseDelay, setBaseDelay] = useState(() => readSharedState(defaultSharedState).baseDelay);
+  const [maxOnScreen, setMaxOnScreen] = useState(() => readSharedState(defaultSharedState).maxOnScreen);
+  const [isFastMode, setIsFastMode] = useState(() => readSharedState(defaultSharedState).isFastMode);
+  const [fastDelay, setFastDelay] = useState(() => readSharedState(defaultSharedState).fastDelay);
+  const [bubbleColor, setBubbleColor] = useState(() => readSharedState(defaultSharedState).bubbleColor);
+  const [profileColor, setProfileColor] = useState(() => readSharedState(defaultSharedState).profileColor);
+  const [bubbleTextColor, setBubbleTextColor] = useState(
+    () => readSharedState(defaultSharedState).bubbleTextColor
+  );
+  const [isBubbleTextBold, setIsBubbleTextBold] = useState(
+    () => readSharedState(defaultSharedState).isBubbleTextBold
+  );
+  const [chatFontSize, setChatFontSize] = useState(() => readSharedState(defaultSharedState).chatFontSize);
+  const [nameFontSize, setNameFontSize] = useState(() => readSharedState(defaultSharedState).nameFontSize);
+  const [chatHeightScale, setChatHeightScale] = useState(
+    () => readSharedState(defaultSharedState).chatHeightScale
+  );
+  const [messageScale, setMessageScale] = useState(() => readSharedState(defaultSharedState).messageScale);
+  const [chatWidth, setChatWidth] = useState(() => readSharedState(defaultSharedState).chatWidth);
+  const [isProjectionMode, setIsProjectionMode] = useState(
+    () => readSharedState(defaultSharedState).isProjectionMode
+  );
   const [projectionNotice, setProjectionNotice] = useState("");
-
-  const [isMuted, setIsMuted] = useState(false);
-  const [soundVolume, setSoundVolume] = useState(0.45);
+  const [isMuted, setIsMuted] = useState(() => readSharedState(defaultSharedState).isMuted);
+  const [soundVolume, setSoundVolume] = useState(() => readSharedState(defaultSharedState).soundVolume);
 
   const timerRef = useRef<number | null>(null);
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
@@ -335,20 +594,159 @@ export default function EurekaDayChatSimulator() {
   const emojiRef = useRef<HTMLAudioElement | null>(null);
   const hasInteractedRef = useRef(false);
   const lastPlayedVisibleCountRef = useRef(0);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const isApplyingRemoteStateRef = useRef(false);
+
+  const sharedState = useMemo(
+    () =>
+      buildSharedStateFromValues({
+        visibleCount,
+        isPlaying,
+        baseDelay,
+        maxOnScreen,
+        isFastMode,
+        fastDelay,
+        bubbleColor,
+        profileColor,
+        bubbleTextColor,
+        isBubbleTextBold,
+        chatFontSize,
+        nameFontSize,
+        chatHeightScale,
+        messageScale,
+        chatWidth,
+        isProjectionMode,
+        isMuted,
+        soundVolume,
+      }),
+    [
+      visibleCount,
+      isPlaying,
+      baseDelay,
+      maxOnScreen,
+      isFastMode,
+      fastDelay,
+      bubbleColor,
+      profileColor,
+      bubbleTextColor,
+      isBubbleTextBold,
+      chatFontSize,
+      nameFontSize,
+      chatHeightScale,
+      messageScale,
+      chatWidth,
+      isProjectionMode,
+      isMuted,
+      soundVolume,
+    ]
+  );
+
+  const applySharedState = (next: SharedPresentationState) => {
+    isApplyingRemoteStateRef.current = true;
+    setVisibleCount(next.visibleCount);
+    setIsPlaying(next.isPlaying);
+    setBaseDelay(next.baseDelay);
+    setMaxOnScreen(next.maxOnScreen);
+    setIsFastMode(next.isFastMode);
+    setFastDelay(next.fastDelay);
+    setBubbleColor(next.bubbleColor);
+    setProfileColor(next.profileColor);
+    setBubbleTextColor(next.bubbleTextColor);
+    setIsBubbleTextBold(next.isBubbleTextBold);
+    setChatFontSize(next.chatFontSize);
+    setNameFontSize(next.nameFontSize);
+    setChatHeightScale(next.chatHeightScale);
+    setMessageScale(next.messageScale);
+    setChatWidth(next.chatWidth);
+    setIsProjectionMode(next.isProjectionMode);
+    setIsMuted(next.isMuted);
+    setSoundVolume(next.soundVolume);
+
+    window.setTimeout(() => {
+      isApplyingRemoteStateRef.current = false;
+    }, 0);
+  };
+
+  useEffect(() => {
+    const channel = new BroadcastChannel(PRESENTATION_CHANNEL_NAME);
+    broadcastChannelRef.current = channel;
+
+    channel.onmessage = (event) => {
+      if (!event.data) return;
+      applySharedState({ ...defaultSharedState, ...event.data });
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== PRESENTATION_STORAGE_KEY || !event.newValue) return;
+      try {
+        const parsed = JSON.parse(event.newValue);
+        applySharedState({ ...defaultSharedState, ...parsed });
+      } catch {
+        // ignore malformed storage updates
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      channel.close();
+      broadcastChannelRef.current = null;
+    };
+  }, [defaultSharedState]);
+
+  useEffect(() => {
+    if (isApplyingRemoteStateRef.current) return;
+    writeSharedState(sharedState);
+    broadcastChannelRef.current?.postMessage(sharedState);
+  }, [sharedState]);
+
+  useEffect(() => {
+    if (mode === "display") {
+      document.title = "Eureka Day Display";
+    } else if (mode === "control") {
+      document.title = "Eureka Day Presenter Control";
+    } else {
+      document.title = "Eureka Day Chat Simulator";
+    }
+  }, [mode]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Space") {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        const isTypingTarget =
+          tag === "input" || tag === "textarea" || target?.getAttribute("contenteditable") === "true";
+
+        if (isTypingTarget) return;
+
         e.preventDefault();
         hasInteractedRef.current = true;
         setIsPlaying(false);
         setVisibleCount((count) => Math.min(count + 1, messages.length));
       }
+
+      if (mode === "control") {
+        if (e.code === "ArrowRight") {
+          e.preventDefault();
+          hasInteractedRef.current = true;
+          setIsPlaying(false);
+          setVisibleCount((count) => Math.min(count + 1, messages.length));
+        }
+
+        if (e.code === "ArrowLeft") {
+          e.preventDefault();
+          hasInteractedRef.current = true;
+          setIsPlaying(false);
+          setVisibleCount((count) => Math.max(count - 1, 0));
+        }
+      }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [messages.length]);
+  }, [messages.length, mode]);
 
   useEffect(() => {
     const markInteracted = () => {
@@ -385,6 +783,11 @@ export default function EurekaDayChatSimulator() {
   };
 
   useEffect(() => {
+    if (mode === "control") {
+      lastPlayedVisibleCountRef.current = visibleCount;
+      return;
+    }
+
     if (visibleCount > lastPlayedVisibleCountRef.current) {
       const newMessage = messages[visibleCount - 1];
 
@@ -396,7 +799,7 @@ export default function EurekaDayChatSimulator() {
     }
 
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, isMuted, soundVolume, messages]);
+  }, [visibleCount, isMuted, soundVolume, messages, mode]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -432,30 +835,444 @@ export default function EurekaDayChatSimulator() {
     setIsProjectionMode((p) => !p);
   };
 
-  const openFullscreenChat = async () => {
-    if (!chatWindowRef.current) return;
+  const openPresentationMode = () => {
+    hasInteractedRef.current = true;
+    setProjectionNotice("");
 
-    if (!document.fullscreenEnabled) {
-      setProjectionNotice(
-        "Fullscreen is blocked in this preview. It should work in a normal browser tab on your own site."
-      );
+    const controlUrl = new URL(window.location.href);
+    controlUrl.searchParams.set("mode", "control");
+
+    const controlTab = window.open(controlUrl.toString(), "_blank");
+
+    if (!controlTab) {
+      setProjectionNotice("Popup blocked. Allow popups for this site to open the Presenter Control tab.");
       return;
     }
 
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        setProjectionNotice("");
-      } else {
-        await chatWindowRef.current.requestFullscreen();
-        setProjectionNotice("");
-      }
-    } catch {
-      setProjectionNotice(
-        "Fullscreen is blocked in this preview. It should work in a normal browser tab on your own site."
-      );
-    }
+    const displayUrl = new URL(window.location.href);
+    displayUrl.searchParams.set("mode", "display");
+    window.location.href = displayUrl.toString();
   };
+
+  const currentMessage = visibleCount > 0 ? messages[visibleCount - 1] : null;
+  const queueMessages = messages.slice(visibleCount, messages.length);
+
+  if (mode === "display") {
+    return (
+      <div className="min-h-screen bg-black">
+        <audio ref={dingRef} src="/sounds/ding.mp3" preload="auto" />
+        <audio ref={emojiRef} src="/sounds/emoji.mp3" preload="auto" />
+        {renderChatFeed({
+          visibleMessages,
+          visibleCount,
+          messagesLength: messages.length,
+          chatWidth,
+          chatHeightScale,
+          isProjectionMode: true,
+          messageScale,
+          profileColor,
+          bubbleColor,
+          bubbleTextColor,
+          nameFontSize,
+          chatFontSize,
+          isBubbleTextBold,
+        })}
+      </div>
+    );
+  }
+
+  if (mode === "control") {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white p-6">
+        <audio ref={dingRef} src="/sounds/ding.mp3" preload="auto" />
+        <audio ref={emojiRef} src="/sounds/emoji.mp3" preload="auto" />
+
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="text-3xl font-semibold">Presenter Control</div>
+              <div className="text-sm text-neutral-400">
+                Message {Math.min(visibleCount, messages.length)} of {messages.length}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  hasInteractedRef.current = true;
+                  setIsPlaying((p) => !p);
+                }}
+                className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+              >
+                {isPlaying ? (
+                  <>
+                    <Pause className="mr-2 h-4 w-4" /> Pause
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" /> Play
+                  </>
+                )}
+              </Button>
+
+              <Button
+                onClick={() => {
+                  hasInteractedRef.current = true;
+                  setIsPlaying(false);
+                  setVisibleCount((count) => Math.max(count - 1, 0));
+                }}
+                className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+              >
+                Previous
+              </Button>
+
+              <Button
+                onClick={() => {
+                  hasInteractedRef.current = true;
+                  setIsPlaying(false);
+                  setVisibleCount((count) => Math.min(count + 1, messages.length));
+                }}
+                className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+              >
+                <SkipForward className="mr-2 h-4 w-4" /> Next
+              </Button>
+
+              <Button
+                onClick={() => {
+                  hasInteractedRef.current = true;
+                  setIsPlaying(false);
+                  setVisibleCount(0);
+                  lastPlayedVisibleCountRef.current = 0;
+                }}
+                className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" /> Reset
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1fr_440px]">
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl">
+                <div className="mb-3 text-sm uppercase tracking-[0.18em] text-neutral-400">
+                  Current Message
+                </div>
+
+                {currentMessage ? (
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div
+                        className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
+                        style={{
+                          width: `${44 * messageScale}px`,
+                          height: `${44 * messageScale}px`,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          backgroundColor: profileColor,
+                        }}
+                      >
+                        <img
+                          src={getAvatarSrc(currentMessage.name)}
+                          alt={currentMessage.name}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            target.style.display = "none";
+                            const fallback = target.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.style.display = "flex";
+                          }}
+                        />
+                        <div
+                          style={{
+                            ...getAvatarStyle(profileColor),
+                            width: "100%",
+                            height: "100%",
+                            display: "none",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {getInitials(currentMessage.name)}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-lg font-semibold">{currentMessage.name}</div>
+                        <div className="text-xs text-neutral-400">
+                          #{currentMessage.id} • {currentMessage.type === "reaction" ? "Reaction" : "Text"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-2xl leading-snug text-neutral-100 whitespace-pre-wrap">
+                      {currentMessage.text}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 text-neutral-400">
+                    No message sent yet.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl">
+                <div className="mb-4 text-sm uppercase tracking-[0.18em] text-neutral-400">
+                  Full Controls
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Message Delay: {baseDelay} ms</div>
+                    <Slider
+                      min={200}
+                      max={2000}
+                      step={50}
+                      value={[baseDelay]}
+                      onValueChange={(v: number[]) => setBaseDelay(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Fast Mode Speed: {fastDelay} ms
+                    </div>
+                    <Slider
+                      min={50}
+                      max={500}
+                      step={10}
+                      value={[fastDelay]}
+                      onValueChange={(v: number[]) => setFastDelay(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Message Sound Volume: {Math.round(soundVolume * 100)}%
+                    </div>
+                    <Slider
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={[soundVolume]}
+                      onValueChange={(v: number[]) => {
+                        hasInteractedRef.current = true;
+                        setSoundVolume(v[0]);
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Chat Width: {chatWidth}px</div>
+                    <Slider
+                      min={500}
+                      max={1400}
+                      step={10}
+                      value={[chatWidth]}
+                      onValueChange={(v: number[]) => setChatWidth(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Chat Height Scale: {chatHeightScale.toFixed(2)}x
+                    </div>
+                    <Slider
+                      min={0.6}
+                      max={2}
+                      step={0.05}
+                      value={[chatHeightScale]}
+                      onValueChange={(v: number[]) => setChatHeightScale(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Message Scale: {messageScale.toFixed(2)}x
+                    </div>
+                    <Slider
+                      min={0.7}
+                      max={2}
+                      step={0.05}
+                      value={[messageScale]}
+                      onValueChange={(v: number[]) => setMessageScale(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Chat Font Size: {chatFontSize}px</div>
+                    <Slider
+                      min={12}
+                      max={32}
+                      step={1}
+                      value={[chatFontSize]}
+                      onValueChange={(v: number[]) => setChatFontSize(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Name Font Size: {nameFontSize}px</div>
+                    <Slider
+                      min={10}
+                      max={28}
+                      step={1}
+                      value={[nameFontSize]}
+                      onValueChange={(v: number[]) => setNameFontSize(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Max Messages On Screen: {maxOnScreen}
+                    </div>
+                    <Slider
+                      min={3}
+                      max={12}
+                      step={1}
+                      value={[maxOnScreen]}
+                      onValueChange={(v: number[]) => setMaxOnScreen(v[0])}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-start gap-6">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Chat Bubble Color</div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={bubbleColor}
+                        onChange={(e) => setBubbleColor(e.target.value)}
+                        className="h-10 w-16 cursor-pointer border border-neutral-700 bg-transparent p-1"
+                      />
+                      <div className="text-sm text-neutral-400">{bubbleColor}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Chat Bubble Text Color</div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={bubbleTextColor}
+                        onChange={(e) => setBubbleTextColor(e.target.value)}
+                        className="h-10 w-16 cursor-pointer border border-neutral-700 bg-transparent p-1"
+                      />
+                      <div className="text-sm text-neutral-400">{bubbleTextColor}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Profile Color (fallback)</div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={profileColor}
+                        onChange={(e) => setProfileColor(e.target.value)}
+                        className="h-10 w-16 cursor-pointer border border-neutral-700 bg-transparent p-1"
+                      />
+                      <div className="text-sm text-neutral-400">{profileColor}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <label className="flex items-center gap-3 text-sm font-medium text-neutral-300">
+                    <input
+                      type="checkbox"
+                      checked={isBubbleTextBold}
+                      onChange={(e) => setIsBubbleTextBold(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Bold Chat Text
+                  </label>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={toggleFastMode}
+                      className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+                    >
+                      {isFastMode ? "Stop Fast" : "Fast Mode"}
+                    </Button>
+
+                    <Button
+                      onClick={() => {
+                        hasInteractedRef.current = true;
+                        setIsMuted((m) => !m);
+                      }}
+                      className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+                    >
+                      {isMuted ? (
+                        <>
+                          <VolumeX className="mr-2 h-4 w-4" /> Muted
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="mr-2 h-4 w-4" /> Sound On
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      onClick={toggleProjectionMode}
+                      className="rounded-2xl bg-white text-black hover:bg-neutral-200"
+                    >
+                      <Monitor className="mr-2 h-4 w-4" />
+                      {isProjectionMode ? "Exit Internal Projection" : "Internal Projection"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl h-[82vh] flex flex-col">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-sm uppercase tracking-[0.18em] text-neutral-400">Message Queue</div>
+                <div className="text-xs text-neutral-500">{queueMessages.length} remaining</div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                {queueMessages.length > 0 ? (
+                  queueMessages.map((message, index) => (
+                    <button
+                      key={message.id}
+                      onClick={() => {
+                        hasInteractedRef.current = true;
+                        setIsPlaying(false);
+                        setVisibleCount(index + visibleCount + 1);
+                      }}
+                      className={`w-full text-left rounded-2xl border p-4 transition ${
+                        index === 0
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-neutral-800 bg-neutral-950 hover:bg-neutral-900"
+                      }`}
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-3">
+                        <div className="text-xs uppercase tracking-[0.15em] text-neutral-500">
+                          {index === 0 ? "Next" : `+${index + 1}`}
+                        </div>
+                        <div className="text-xs text-neutral-500">#{message.id}</div>
+                      </div>
+
+                      <div className="font-semibold text-neutral-100">{message.name}</div>
+                      <div className="mt-2 text-sm leading-relaxed text-neutral-300 whitespace-pre-wrap">
+                        {message.text}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 text-neutral-400">
+                    No more upcoming messages.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black p-6">
@@ -538,8 +1355,8 @@ export default function EurekaDayChatSimulator() {
                 {isProjectionMode ? "Exit Projection" : "Projection Mode"}
               </Button>
 
-              <Button variant="outline" onClick={openFullscreenChat} className="rounded-2xl">
-                <Maximize className="mr-2 h-4 w-4" /> Fullscreen Chat
+              <Button variant="outline" onClick={openPresentationMode} className="rounded-2xl">
+                <Monitor className="mr-2 h-4 w-4" /> Open Presentation Mode
               </Button>
             </div>
 
@@ -730,139 +1547,22 @@ export default function EurekaDayChatSimulator() {
           </CardContent>
         </Card>
 
-        <div
-          ref={chatWindowRef}
-          className={
-            isProjectionMode
-              ? "bg-black min-h-screen w-full flex items-center justify-center overflow-hidden"
-              : "bg-[#f5f7fb] p-5 shadow-xl ring-1 ring-black/5 flex items-center justify-center overflow-hidden"
-          }
-        >
-          <div
-            className="flex w-full items-center justify-center overflow-hidden"
-            style={{
-              minHeight: isProjectionMode ? "100vh" : "45vh",
-              padding: isProjectionMode ? "2vh 2vw" : "0",
-              boxSizing: "border-box",
-            }}
-          >
-            <div
-              className="flex flex-col overflow-hidden border border-neutral-800 bg-black shadow-2xl"
-              style={{
-                width: `min(${chatWidth}px, 96vw)`,
-                height: isProjectionMode
-                  ? `min(${780 * chatHeightScale}px, 94vh)`
-                  : `min(${420 * chatHeightScale}px, 45vh)`,
-                maxWidth: "96vw",
-                maxHeight: isProjectionMode ? "94vh" : "45vh",
-              }}
-            >
-              <div className={`flex-1 overflow-hidden bg-black ${isProjectionMode ? "px-6 py-6" : "px-5 py-5"}`}>
-                <div className="flex h-full flex-col justify-end" style={{ gap: `${12 * messageScale}px` }}>
-                  <AnimatePresence initial={false}>
-                    {visibleMessages.map((message) => (
-                      <motion.div
-                        layout
-                        key={message.id}
-                        initial={{ opacity: 0, y: 28, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -16 }}
-                        transition={{
-                          duration: 0.7,
-                          ease: [0.22, 1, 0.36, 1],
-                          layout: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
-                        }}
-                        className="flex items-start"
-                        style={{ gap: `${12 * messageScale}px` }}
-                      >
-                        <div
-                          className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
-                          style={{
-                            width: `${40 * messageScale}px`,
-                            height: `${40 * messageScale}px`,
-                            border: "1px solid rgba(0,0,0,0.18)",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
-                            backgroundColor: profileColor,
-                          }}
-                        >
-                          <img
-                            src={getAvatarSrc(message.name)}
-                            alt={message.name}
-                            className="h-full w-full object-cover"
-                            draggable={false}
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              target.style.display = "none";
-                              const fallback = target.nextElementSibling as HTMLElement | null;
-                              if (fallback) fallback.style.display = "flex";
-                            }}
-                          />
-
-                          <div
-                            style={{
-                              ...getAvatarStyle(profileColor),
-                              width: "100%",
-                              height: "100%",
-                              display: "none",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: `${12 * messageScale}px`,
-                              fontWeight: "bold",
-                            }}
-                          >
-                            {getInitials(message.name)}
-                          </div>
-                        </div>
-
-                        <div
-                          className="min-w-0 max-w-[78%] shadow-sm ring-1 ring-black/5"
-                          style={{
-                            backgroundColor: bubbleColor,
-                            borderRadius: `${24 * messageScale}px`,
-                            paddingLeft: `${16 * messageScale}px`,
-                            paddingRight: `${16 * messageScale}px`,
-                            paddingTop: `${12 * messageScale}px`,
-                            paddingBottom: `${12 * messageScale}px`,
-                          }}
-                        >
-                          <div
-                            className="font-semibold leading-tight"
-                            style={{
-                              color: bubbleTextColor,
-                              fontSize: `${nameFontSize * messageScale}px`,
-                              marginBottom: `${4 * messageScale}px`,
-                            }}
-                          >
-                            {message.name}
-                          </div>
-
-                          <div
-                            className="leading-snug"
-                            style={{
-                              color: bubbleTextColor,
-                              fontWeight: isBubbleTextBold ? 700 : 400,
-                              fontSize: `${
-                                (message.type === "reaction" ? chatFontSize * 1.5 : chatFontSize) *
-                                messageScale
-                              }px`,
-                              lineHeight: message.type === "reaction" ? 1 : 1.35,
-                            }}
-                          >
-                            {message.text}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-800 bg-black px-5 py-3 text-sm text-neutral-400">
-                Showing {visibleCount} of {messages.length} messages
-              </div>
-            </div>
-          </div>
-        </div>
+        {renderChatFeed({
+          visibleMessages,
+          visibleCount,
+          messagesLength: messages.length,
+          chatWidth,
+          chatHeightScale,
+          isProjectionMode,
+          messageScale,
+          profileColor,
+          bubbleColor,
+          bubbleTextColor,
+          nameFontSize,
+          chatFontSize,
+          isBubbleTextBold,
+          chatWindowRef,
+        })}
       </div>
     </div>
   );
