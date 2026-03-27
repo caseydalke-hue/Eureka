@@ -361,6 +361,61 @@ function writeSharedState(next: SharedPresentationState) {
     // ignore storage failures
   }
 }
+function AvatarCircle({
+  name,
+  profileColor,
+  messageScale,
+  loadedAvatars,
+  large = false,
+}: {
+  name: string;
+  profileColor: string;
+  messageScale: number;
+  loadedAvatars: Set<string>;
+  large?: boolean;
+}) {
+  const size = (large ? 44 : 40) * messageScale;
+  const avatarLoaded = loadedAvatars.has(name);
+
+  return (
+    <div
+      className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        border: large ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.18)",
+        boxShadow: large ? undefined : "0 1px 2px rgba(0,0,0,0.12)",
+        backgroundColor: profileColor,
+      }}
+    >
+      {avatarLoaded ? (
+        <img
+          src={getAvatarSrc(name)}
+          alt={name}
+          className="h-full w-full object-cover"
+          draggable={false}
+          loading="eager"
+          decoding="async"
+        />
+      ) : (
+        <div
+          style={{
+            ...getAvatarStyle(profileColor),
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: `${(large ? 14 : 12) * messageScale}px`,
+            fontWeight: "bold",
+          }}
+        >
+          {getInitials(name)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function renderChatFeed({
   visibleMessages,
@@ -377,6 +432,7 @@ function renderChatFeed({
   chatFontSize,
   isBubbleTextBold,
   chatWindowRef,
+  loadedAvatars,
 }: {
   visibleMessages: Message[];
   visibleCount: number;
@@ -392,6 +448,7 @@ function renderChatFeed({
   chatFontSize: number;
   isBubbleTextBold: boolean;
   chatWindowRef?: React.RefObject<HTMLDivElement | null>;
+  loadedAvatars: Set<string>;
 }) {
   return (
     <div
@@ -426,57 +483,28 @@ function renderChatFeed({
               <AnimatePresence initial={false}>
                 {visibleMessages.map((message) => (
                   <motion.div
-                    layout
+                    layout="position"
                     key={message.id}
-                    initial={{ opacity: 0, y: 28, scale: 0.98 }}
+                    initial={{ opacity: 0, y: 18, scale: 0.995 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -16 }}
+                    exit={{ opacity: 0, y: -10 }}
                     transition={{
-                      duration: 0.7,
+                      duration: 0.42,
                       ease: [0.22, 1, 0.36, 1],
-                      layout: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
+                      layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
                     }}
                     className="flex items-start"
-                    style={{ gap: `${12 * messageScale}px` }}
+                    style={{
+                      gap: `${12 * messageScale}px`,
+                      willChange: "transform, opacity",
+                    }}
                   >
-                    <div
-                      className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
-                      style={{
-                        width: `${40 * messageScale}px`,
-                        height: `${40 * messageScale}px`,
-                        border: "1px solid rgba(0,0,0,0.18)",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
-                        backgroundColor: profileColor,
-                      }}
-                    >
-                      <img
-                        src={getAvatarSrc(message.name)}
-                        alt={message.name}
-                        className="h-full w-full object-cover"
-                        draggable={false}
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          target.style.display = "none";
-                          const fallback = target.nextElementSibling as HTMLElement | null;
-                          if (fallback) fallback.style.display = "flex";
-                        }}
-                      />
-
-                      <div
-                        style={{
-                          ...getAvatarStyle(profileColor),
-                          width: "100%",
-                          height: "100%",
-                          display: "none",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: `${12 * messageScale}px`,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {getInitials(message.name)}
-                      </div>
-                    </div>
+                    <AvatarCircle
+                      name={message.name}
+                      profileColor={profileColor}
+                      messageScale={messageScale}
+                      loadedAvatars={loadedAvatars}
+                    />
 
                     <div
                       className="min-w-0 max-w-[78%] shadow-sm ring-1 ring-black/5"
@@ -587,6 +615,7 @@ export default function EurekaDayChatSimulator() {
   const [projectionNotice, setProjectionNotice] = useState("");
   const [isMuted, setIsMuted] = useState(() => readSharedState(defaultSharedState).isMuted);
   const [soundVolume, setSoundVolume] = useState(() => readSharedState(defaultSharedState).soundVolume);
+  const [loadedAvatars, setLoadedAvatars] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<number | null>(null);
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
@@ -596,6 +625,46 @@ export default function EurekaDayChatSimulator() {
   const lastPlayedVisibleCountRef = useRef(0);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
+  const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const uniqueNames = Array.from(new Set(messages.map((m) => m.name)));
+
+    Promise.allSettled(
+      uniqueNames.map(
+        (name) =>
+          new Promise<string>((resolve, reject) => {
+            const img = new Image();
+            img.onload = async () => {
+              try {
+                if (typeof img.decode === "function") {
+                  await img.decode();
+                }
+              } catch {
+                // ignore decode errors
+              }
+              resolve(name);
+            };
+            img.onerror = () => reject(name);
+            img.src = getAvatarSrc(name);
+          })
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const loaded = new Set<string>();
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          loaded.add(result.value);
+        }
+      });
+      setLoadedAvatars(loaded);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [messages]);
 
   const sharedState = useMemo(
     () =>
@@ -824,6 +893,14 @@ export default function EurekaDayChatSimulator() {
     if (visibleCount >= messages.length) setIsPlaying(false);
   }, [visibleCount, messages.length]);
 
+  useEffect(() => {
+    if (mode !== "control") return;
+    currentQueueItemRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [mode, visibleCount]);
+
   const toggleFastMode = () => {
     hasInteractedRef.current = true;
     setIsPlaying(false);
@@ -855,7 +932,7 @@ export default function EurekaDayChatSimulator() {
   };
 
   const currentMessage = visibleCount > 0 ? messages[visibleCount - 1] : null;
-  const queueMessages = messages.slice(visibleCount, messages.length);
+  const remainingCount = Math.max(messages.length - visibleCount, 0);
 
   if (mode === "display") {
     return (
@@ -876,6 +953,7 @@ export default function EurekaDayChatSimulator() {
           nameFontSize,
           chatFontSize,
           isBubbleTextBold,
+          loadedAvatars,
         })}
       </div>
     );
@@ -961,42 +1039,13 @@ export default function EurekaDayChatSimulator() {
                 {currentMessage ? (
                   <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
                     <div className="mb-4 flex items-center gap-3">
-                      <div
-                        className="shrink-0 rounded-full overflow-hidden flex items-center justify-center"
-                        style={{
-                          width: `${44 * messageScale}px`,
-                          height: `${44 * messageScale}px`,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          backgroundColor: profileColor,
-                        }}
-                      >
-                        <img
-                          src={getAvatarSrc(currentMessage.name)}
-                          alt={currentMessage.name}
-                          className="h-full w-full object-cover"
-                          draggable={false}
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            target.style.display = "none";
-                            const fallback = target.nextElementSibling as HTMLElement | null;
-                            if (fallback) fallback.style.display = "flex";
-                          }}
-                        />
-                        <div
-                          style={{
-                            ...getAvatarStyle(profileColor),
-                            width: "100%",
-                            height: "100%",
-                            display: "none",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "14px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {getInitials(currentMessage.name)}
-                        </div>
-                      </div>
+                      <AvatarCircle
+                        name={currentMessage.name}
+                        profileColor={profileColor}
+                        messageScale={messageScale}
+                        loadedAvatars={loadedAvatars}
+                        large
+                      />
 
                       <div>
                         <div className="text-lg font-semibold">{currentMessage.name}</div>
@@ -1229,43 +1278,61 @@ export default function EurekaDayChatSimulator() {
             <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl h-[82vh] flex flex-col">
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-sm uppercase tracking-[0.18em] text-neutral-400">Message Queue</div>
-                <div className="text-xs text-neutral-500">{queueMessages.length} remaining</div>
+                <div className="text-xs text-neutral-500">{remainingCount} remaining</div>
               </div>
 
               <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-                {queueMessages.length > 0 ? (
-                  queueMessages.map((message, index) => (
+                {messages.map((message, index) => {
+                  const isPast = index < visibleCount - 1;
+                  const isCurrent = index === visibleCount - 1;
+                  const isNext = index === visibleCount;
+
+                  let cardClass =
+                    "border-neutral-800 bg-neutral-950 hover:bg-neutral-900";
+
+                  if (isCurrent) {
+                    cardClass = "border-emerald-500 bg-emerald-500/10";
+                  } else if (isNext) {
+                    cardClass = "border-blue-500 bg-blue-500/10";
+                  } else if (isPast) {
+                    cardClass = "border-neutral-800 bg-neutral-900/70 hover:bg-neutral-900";
+                  }
+
+                  return (
                     <button
                       key={message.id}
+                      ref={isCurrent ? currentQueueItemRef : null}
                       onClick={() => {
                         hasInteractedRef.current = true;
                         setIsPlaying(false);
-                        setVisibleCount(index + visibleCount + 1);
+                        setVisibleCount(index + 1);
                       }}
-                      className={`w-full text-left rounded-2xl border p-4 transition ${
-                        index === 0
-                          ? "border-blue-500 bg-blue-500/10"
-                          : "border-neutral-800 bg-neutral-950 hover:bg-neutral-900"
-                      }`}
+                      className={`w-full text-left rounded-2xl border p-4 transition ${cardClass}`}
                     >
                       <div className="mb-1 flex items-center justify-between gap-3">
                         <div className="text-xs uppercase tracking-[0.15em] text-neutral-500">
-                          {index === 0 ? "Next" : `+${index + 1}`}
+                          {isCurrent
+                            ? "Current"
+                            : isNext
+                            ? "Next"
+                            : isPast
+                            ? "Sent"
+                            : `+${index - visibleCount}`}
                         </div>
                         <div className="text-xs text-neutral-500">#{message.id}</div>
                       </div>
 
                       <div className="font-semibold text-neutral-100">{message.name}</div>
-                      <div className="mt-2 text-sm leading-relaxed text-neutral-300 whitespace-pre-wrap">
+                      <div
+                        className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                          isPast ? "text-neutral-400" : "text-neutral-300"
+                        }`}
+                      >
                         {message.text}
                       </div>
                     </button>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 text-neutral-400">
-                    No more upcoming messages.
-                  </div>
-                )}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1562,6 +1629,7 @@ export default function EurekaDayChatSimulator() {
           chatFontSize,
           isBubbleTextBold,
           chatWindowRef,
+          loadedAvatars,
         })}
       </div>
     </div>
