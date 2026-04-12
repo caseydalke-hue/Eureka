@@ -5,8 +5,6 @@ import {
   RotateCcw,
   SkipForward,
   Monitor,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -61,8 +59,6 @@ type SharedPresentationState = {
   isPlaying: boolean;
   baseDelay: number;
   maxOnScreen: number;
-  isFastMode: boolean;
-  fastDelay: number;
   bubbleColor: string;
   profileColor: string;
   bubbleTextColor: string;
@@ -73,8 +69,6 @@ type SharedPresentationState = {
   messageScale: number;
   chatWidth: number;
   isProjectionMode: boolean;
-  isMuted: boolean;
-  soundVolume: number;
 };
 
 const PRESENTATION_STORAGE_KEY = "eureka-day-chat-presentation-state";
@@ -479,19 +473,19 @@ function renderChatFeed({
           }}
         >
           <div className={`flex-1 overflow-hidden bg-black ${isProjectionMode ? "px-6 py-6" : "px-5 py-5"}`}>
-            <div className="flex h-full flex-col justify-end" style={{ gap: `${12 * messageScale}px` }}>
+            <div className="flex h-full flex-col justify-start" style={{ gap: `${12 * messageScale}px` }}>
               <AnimatePresence initial={false}>
                 {visibleMessages.map((message) => (
                   <motion.div
                     layout="position"
                     key={message.id}
-                    initial={{ opacity: 0, y: 18, scale: 0.995 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10 }}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
                     transition={{
-                      duration: 0.42,
+                      duration: 0.22,
                       ease: [0.22, 1, 0.36, 1],
-                      layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                      layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
                     }}
                     className="flex items-start"
                     style={{
@@ -570,8 +564,6 @@ export default function EurekaDayChatSimulator() {
       isPlaying: false,
       baseDelay: 850,
       maxOnScreen: 8,
-      isFastMode: false,
-      fastDelay: 180,
       bubbleColor: "#f5f5f5",
       profileColor: "#93c5fd",
       bubbleTextColor: "#1f2937",
@@ -582,8 +574,6 @@ export default function EurekaDayChatSimulator() {
       messageScale: 1,
       chatWidth: 820,
       isProjectionMode: false,
-      isMuted: false,
-      soundVolume: 0.45,
     }),
     []
   );
@@ -592,8 +582,6 @@ export default function EurekaDayChatSimulator() {
   const [isPlaying, setIsPlaying] = useState(() => readSharedState(defaultSharedState).isPlaying);
   const [baseDelay, setBaseDelay] = useState(() => readSharedState(defaultSharedState).baseDelay);
   const [maxOnScreen, setMaxOnScreen] = useState(() => readSharedState(defaultSharedState).maxOnScreen);
-  const [isFastMode, setIsFastMode] = useState(() => readSharedState(defaultSharedState).isFastMode);
-  const [fastDelay, setFastDelay] = useState(() => readSharedState(defaultSharedState).fastDelay);
   const [bubbleColor, setBubbleColor] = useState(() => readSharedState(defaultSharedState).bubbleColor);
   const [profileColor, setProfileColor] = useState(() => readSharedState(defaultSharedState).profileColor);
   const [bubbleTextColor, setBubbleTextColor] = useState(
@@ -613,8 +601,6 @@ export default function EurekaDayChatSimulator() {
     () => readSharedState(defaultSharedState).isProjectionMode
   );
   const [projectionNotice, setProjectionNotice] = useState("");
-  const [isMuted, setIsMuted] = useState(() => readSharedState(defaultSharedState).isMuted);
-  const [soundVolume, setSoundVolume] = useState(() => readSharedState(defaultSharedState).soundVolume);
   const [loadedAvatars, setLoadedAvatars] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<number | null>(null);
@@ -673,8 +659,6 @@ export default function EurekaDayChatSimulator() {
         isPlaying,
         baseDelay,
         maxOnScreen,
-        isFastMode,
-        fastDelay,
         bubbleColor,
         profileColor,
         bubbleTextColor,
@@ -685,16 +669,12 @@ export default function EurekaDayChatSimulator() {
         messageScale,
         chatWidth,
         isProjectionMode,
-        isMuted,
-        soundVolume,
       }),
     [
       visibleCount,
       isPlaying,
       baseDelay,
       maxOnScreen,
-      isFastMode,
-      fastDelay,
       bubbleColor,
       profileColor,
       bubbleTextColor,
@@ -705,8 +685,6 @@ export default function EurekaDayChatSimulator() {
       messageScale,
       chatWidth,
       isProjectionMode,
-      isMuted,
-      soundVolume,
     ]
   );
 
@@ -716,8 +694,6 @@ export default function EurekaDayChatSimulator() {
     setIsPlaying(next.isPlaying);
     setBaseDelay(next.baseDelay);
     setMaxOnScreen(next.maxOnScreen);
-    setIsFastMode(next.isFastMode);
-    setFastDelay(next.fastDelay);
     setBubbleColor(next.bubbleColor);
     setProfileColor(next.profileColor);
     setBubbleTextColor(next.bubbleTextColor);
@@ -728,8 +704,6 @@ export default function EurekaDayChatSimulator() {
     setMessageScale(next.messageScale);
     setChatWidth(next.chatWidth);
     setIsProjectionMode(next.isProjectionMode);
-    setIsMuted(next.isMuted);
-    setSoundVolume(next.soundVolume);
 
     window.setTimeout(() => {
       isApplyingRemoteStateRef.current = false;
@@ -832,19 +806,18 @@ export default function EurekaDayChatSimulator() {
   }, []);
 
   const visibleMessages = useMemo(
-    () => messages.slice(Math.max(0, visibleCount - maxOnScreen), visibleCount),
+    () => messages.slice(0, visibleCount).slice(-maxOnScreen).reverse(),
     [messages, visibleCount, maxOnScreen]
   );
 
   const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>) => {
     const audio = audioRef.current;
-    if (!audio || isMuted || soundVolume <= 0) return;
-    if (!hasInteractedRef.current) return;
+    if (!audio || !hasInteractedRef.current) return;
 
     try {
       audio.pause();
       audio.currentTime = 0;
-      audio.volume = soundVolume;
+      audio.volume = 0.45;
       void audio.play();
     } catch {
       // ignore browser playback failures
@@ -868,14 +841,14 @@ export default function EurekaDayChatSimulator() {
     }
 
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, isMuted, soundVolume, messages, mode]);
+  }, [visibleCount, messages, mode]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
 
-    if ((!isPlaying && !isFastMode) || visibleCount >= messages.length) return;
+    if (!isPlaying || visibleCount >= messages.length) return;
 
-    const delay = isFastMode ? fastDelay : baseDelay + Math.floor(Math.random() * 180);
+    const delay = baseDelay + Math.floor(Math.random() * 180);
 
     timerRef.current = window.setTimeout(() => {
       setVisibleCount((count) => Math.min(count + 1, messages.length));
@@ -887,7 +860,7 @@ export default function EurekaDayChatSimulator() {
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [isPlaying, isFastMode, visibleCount, messages, baseDelay, fastDelay]);
+  }, [isPlaying, visibleCount, messages, baseDelay]);
 
   useEffect(() => {
     if (visibleCount >= messages.length) setIsPlaying(false);
@@ -900,12 +873,6 @@ export default function EurekaDayChatSimulator() {
       behavior: "smooth",
     });
   }, [mode, visibleCount]);
-
-  const toggleFastMode = () => {
-    hasInteractedRef.current = true;
-    setIsPlaying(false);
-    setIsFastMode((f) => !f);
-  };
 
   const toggleProjectionMode = () => {
     hasInteractedRef.current = true;
@@ -1084,35 +1051,6 @@ export default function EurekaDayChatSimulator() {
                   </div>
 
                   <div className="space-y-2">
-                    <div className="text-sm font-medium text-neutral-300">
-                      Fast Mode Speed: {fastDelay} ms
-                    </div>
-                    <Slider
-                      min={50}
-                      max={500}
-                      step={10}
-                      value={[fastDelay]}
-                      onValueChange={(v: number[]) => setFastDelay(v[0])}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-neutral-300">
-                      Message Sound Volume: {Math.round(soundVolume * 100)}%
-                    </div>
-                    <Slider
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={[soundVolume]}
-                      onValueChange={(v: number[]) => {
-                        hasInteractedRef.current = true;
-                        setSoundVolume(v[0]);
-                      }}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
                     <div className="text-sm font-medium text-neutral-300">Chat Width: {chatWidth}px</div>
                     <Slider
                       min={500}
@@ -1238,30 +1176,6 @@ export default function EurekaDayChatSimulator() {
                   </label>
 
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      onClick={toggleFastMode}
-                      className="rounded-2xl bg-white text-black hover:bg-neutral-200"
-                    >
-                      {isFastMode ? "Stop Fast" : "Fast Mode"}
-                    </Button>
-
-                    <Button
-                      onClick={() => {
-                        hasInteractedRef.current = true;
-                        setIsMuted((m) => !m);
-                      }}
-                      className="rounded-2xl bg-white text-black hover:bg-neutral-200"
-                    >
-                      {isMuted ? (
-                        <>
-                          <VolumeX className="mr-2 h-4 w-4" /> Muted
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="mr-2 h-4 w-4" /> Sound On
-                        </>
-                      )}
-                    </Button>
 
                     <Button
                       onClick={toggleProjectionMode}
@@ -1385,22 +1299,6 @@ export default function EurekaDayChatSimulator() {
               </Button>
 
               <Button
-                variant={isFastMode ? "default" : "outline"}
-                onClick={toggleFastMode}
-                className="rounded-2xl"
-              >
-                {isFastMode ? (
-                  <>
-                    <Pause className="mr-2 h-4 w-4" /> Stop Fast
-                  </>
-                ) : (
-                  <>
-                    <SkipForward className="mr-2 h-4 w-4" /> Fast Mode
-                  </>
-                )}
-              </Button>
-
-              <Button
                 variant="outline"
                 onClick={() => {
                   hasInteractedRef.current = true;
@@ -1441,53 +1339,6 @@ export default function EurekaDayChatSimulator() {
                 step={50}
                 value={[baseDelay]}
                 onValueChange={(v: number[]) => setBaseDelay(v[0])}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="text-sm font-medium">Fast Mode Speed: {fastDelay} ms</div>
-              <Slider
-                min={50}
-                max={500}
-                step={10}
-                value={[fastDelay]}
-                onValueChange={(v: number[]) => setFastDelay(v[0])}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium">
-                  Message Sound Volume: {Math.round(soundVolume * 100)}%
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    hasInteractedRef.current = true;
-                    setIsMuted((m) => !m);
-                  }}
-                  className="rounded-2xl"
-                >
-                  {isMuted ? (
-                    <>
-                      <VolumeX className="mr-2 h-4 w-4" /> Muted
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="mr-2 h-4 w-4" /> Sound On
-                    </>
-                  )}
-                </Button>
-              </div>
-              <Slider
-                min={0}
-                max={1}
-                step={0.05}
-                value={[soundVolume]}
-                onValueChange={(v: number[]) => {
-                  hasInteractedRef.current = true;
-                  setSoundVolume(v[0]);
-                }}
               />
             </div>
 
