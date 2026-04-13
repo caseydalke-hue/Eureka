@@ -834,10 +834,22 @@ export default function EurekaDayChatSimulator() {
     if (!audio || !hasInteractedRef.current || soundVolume <= 0) return;
 
     try {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.volume = soundVolume;
-      void audio.play();
+      const sound = audio.cloneNode(true) as HTMLAudioElement;
+      sound.volume = soundVolume;
+      sound.preload = "auto";
+
+      const cleanup = () => {
+        sound.removeEventListener("ended", cleanup);
+        sound.removeEventListener("error", cleanup);
+        sound.remove();
+      };
+
+      sound.addEventListener("ended", cleanup);
+      sound.addEventListener("error", cleanup);
+
+      void sound.play().catch(() => {
+        cleanup();
+      });
     } catch {
       // ignore browser playback failures
     }
