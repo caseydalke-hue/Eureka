@@ -620,6 +620,11 @@ export default function EurekaDayChatSimulator() {
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
+  const avatarScaleRef = useRef(avatarScale);
+
+  useEffect(() => {
+    avatarScaleRef.current = avatarScale;
+  }, [avatarScale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -712,7 +717,7 @@ export default function EurekaDayChatSimulator() {
     setNameFontSize(next.nameFontSize);
     setChatHeightScale(next.chatHeightScale);
     setMessageScale(next.messageScale);
-    setAvatarScale(next.avatarScale);
+    setAvatarScale(Number.isFinite(next.avatarScale) ? next.avatarScale : avatarScaleRef.current);
     setChatWidth(next.chatWidth);
     setIsProjectionMode(next.isProjectionMode);
 
