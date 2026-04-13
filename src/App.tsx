@@ -545,7 +545,7 @@ function renderChatFeed({
 
           {!isProjectionMode && (
             <div className="border-t border-neutral-800 bg-black px-5 py-3 text-sm text-neutral-400">
-              Showing {visibleCount} of {messagesLength} messages
+              {visibleCount > messagesLength ? "Blackout cue active" : `Showing ${visibleCount} of ${messagesLength} messages`}
             </div>
           )}
         </div>
@@ -767,7 +767,7 @@ export default function EurekaDayChatSimulator() {
         e.preventDefault();
         hasInteractedRef.current = true;
         setIsPlaying(false);
-        setVisibleCount((count) => Math.min(count + 1, messages.length));
+        setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
       }
 
       if (mode === "control") {
@@ -775,7 +775,7 @@ export default function EurekaDayChatSimulator() {
           e.preventDefault();
           hasInteractedRef.current = true;
           setIsPlaying(false);
-          setVisibleCount((count) => Math.min(count + 1, messages.length));
+          setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
         }
 
         if (e.code === "ArrowLeft") {
@@ -805,9 +805,11 @@ export default function EurekaDayChatSimulator() {
     };
   }, []);
 
+  const isBlackScreen = visibleCount > messages.length;
+
   const visibleMessages = useMemo(
-    () => messages.slice(0, visibleCount).slice(-maxOnScreen).reverse(),
-    [messages, visibleCount, maxOnScreen]
+    () => (isBlackScreen ? [] : messages.slice(0, visibleCount).slice(-maxOnScreen).reverse()),
+    [messages, visibleCount, maxOnScreen, isBlackScreen]
   );
 
   const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>) => {
@@ -830,7 +832,7 @@ export default function EurekaDayChatSimulator() {
       return;
     }
 
-    if (visibleCount > lastPlayedVisibleCountRef.current) {
+    if (visibleCount > lastPlayedVisibleCountRef.current && visibleCount <= messages.length) {
       const newMessage = messages[visibleCount - 1];
 
       if (newMessage?.type === "reaction") {
@@ -851,7 +853,7 @@ export default function EurekaDayChatSimulator() {
     const delay = baseDelay + Math.floor(Math.random() * 180);
 
     timerRef.current = window.setTimeout(() => {
-      setVisibleCount((count) => Math.min(count + 1, messages.length));
+      setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
     }, delay);
   };
 
@@ -898,8 +900,8 @@ export default function EurekaDayChatSimulator() {
     window.location.href = displayUrl.toString();
   };
 
-  const currentMessage = visibleCount > 0 ? messages[visibleCount - 1] : null;
-  const remainingCount = Math.max(messages.length - visibleCount, 0);
+  const currentMessage = visibleCount > 0 && visibleCount <= messages.length ? messages[visibleCount - 1] : null;
+  const remainingCount = Math.max(messages.length - Math.min(visibleCount, messages.length), 0);
 
   if (mode === "display") {
     return (
@@ -937,7 +939,7 @@ export default function EurekaDayChatSimulator() {
             <div>
               <div className="text-3xl font-semibold">Presenter Control</div>
               <div className="text-sm text-neutral-400">
-                Message {Math.min(visibleCount, messages.length)} of {messages.length}
+                Message {isBlackScreen ? "Blackout Cue" : `${Math.min(visibleCount, messages.length)} of ${messages.length}`}
               </div>
             </div>
 
@@ -975,7 +977,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount((count) => Math.min(count + 1, messages.length));
+                  setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
                 }}
                 className="rounded-2xl bg-white text-black hover:bg-neutral-200"
               >
@@ -1005,30 +1007,43 @@ export default function EurekaDayChatSimulator() {
 
                 {currentMessage ? (
                   <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-                    <div className="mb-4 flex items-center gap-3">
-                      <AvatarCircle
-                        name={currentMessage.name}
-                        profileColor={profileColor}
-                        messageScale={messageScale}
-                        loadedAvatars={loadedAvatars}
-                        large
-                      />
-
-                      <div>
-                        <div className="text-lg font-semibold">{currentMessage.name}</div>
-                        <div className="text-xs text-neutral-400">
-                          #{currentMessage.id} • {currentMessage.type === "reaction" ? "Reaction" : "Text"}
+                    <div className="flex items-start gap-5">
+                      <div className="shrink-0 rounded-2xl border border-neutral-800 bg-black px-5 py-4 text-center min-w-[120px]">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+                          Message
+                        </div>
+                        <div className="mt-2 text-5xl font-semibold leading-none text-white">
+                          {currentMessage.id}
                         </div>
                       </div>
-                    </div>
 
-                    <div className="text-2xl leading-snug text-neutral-100 whitespace-pre-wrap">
-                      {currentMessage.text}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-4 flex items-center gap-3">
+                          <AvatarCircle
+                            name={currentMessage.name}
+                            profileColor={profileColor}
+                            messageScale={messageScale}
+                            loadedAvatars={loadedAvatars}
+                            large
+                          />
+
+                          <div>
+                            <div className="text-lg font-semibold">{currentMessage.name}</div>
+                            <div className="text-xs text-neutral-400">
+                              #{currentMessage.id} • {currentMessage.type === "reaction" ? "Reaction" : "Text"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-2xl leading-snug text-neutral-100 whitespace-pre-wrap">
+                          {currentMessage.text}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 text-neutral-400">
-                    No message sent yet.
+                    {isBlackScreen ? "Blackout cue active." : "No message sent yet."}
                   </div>
                 )}
               </div>
@@ -1291,7 +1306,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount((count) => Math.min(count + 1, messages.length));
+                  setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
                 }}
                 className="rounded-2xl"
               >
