@@ -620,11 +620,6 @@ export default function EurekaDayChatSimulator() {
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
-  const avatarScaleRef = useRef(avatarScale);
-
-  useEffect(() => {
-    avatarScaleRef.current = avatarScale;
-  }, [avatarScale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -717,7 +712,7 @@ export default function EurekaDayChatSimulator() {
     setNameFontSize(next.nameFontSize);
     setChatHeightScale(next.chatHeightScale);
     setMessageScale(next.messageScale);
-    setAvatarScale(Number.isFinite(next.avatarScale) ? next.avatarScale : avatarScaleRef.current);
+    setAvatarScale(next.avatarScale);
     setChatWidth(next.chatWidth);
     setIsProjectionMode(next.isProjectionMode);
 
@@ -843,11 +838,6 @@ export default function EurekaDayChatSimulator() {
   };
 
   useEffect(() => {
-    if (mode === "control") {
-      lastPlayedVisibleCountRef.current = visibleCount;
-      return;
-    }
-
     if (visibleCount > lastPlayedVisibleCountRef.current && visibleCount <= messages.length) {
       const newMessage = messages[visibleCount - 1];
 
@@ -859,7 +849,7 @@ export default function EurekaDayChatSimulator() {
     }
 
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, messages, mode]);
+  }, [visibleCount, messages]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
