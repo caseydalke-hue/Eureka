@@ -478,7 +478,7 @@ function renderChatFeed({
           }}
         >
           <div className={`flex-1 overflow-hidden bg-black ${isProjectionMode ? "px-6 py-6" : "px-5 py-5"}`}>
-            <div className="flex h-full flex-col justify-start" style={{ gap: `${12 * messageScale}px` }}>
+            <div className="flex h-full flex-col-reverse justify-end" style={{ gap: `${12 * messageScale}px` }}>
               <AnimatePresence initial={false}>
                 {visibleMessages.map((message) => (
                   <motion.div
@@ -819,7 +819,7 @@ export default function EurekaDayChatSimulator() {
   const isBlackScreen = visibleCount > messages.length;
 
   const visibleMessages = useMemo(
-    () => (isBlackScreen ? [] : messages.slice(0, visibleCount).slice(-maxOnScreen).reverse()),
+    () => (isBlackScreen ? [] : messages.slice(0, visibleCount).slice(-maxOnScreen)),
     [messages, visibleCount, maxOnScreen, isBlackScreen]
   );
 
