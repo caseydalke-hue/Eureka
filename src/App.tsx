@@ -67,6 +67,7 @@ type SharedPresentationState = {
   nameFontSize: number;
   chatHeightScale: number;
   messageScale: number;
+  avatarScale: number;
   chatWidth: number;
   isProjectionMode: boolean;
 };
@@ -359,16 +360,18 @@ function AvatarCircle({
   name,
   profileColor,
   messageScale,
+  avatarScale = 1,
   loadedAvatars,
   large = false,
 }: {
   name: string;
   profileColor: string;
   messageScale: number;
+  avatarScale?: number;
   loadedAvatars: Set<string>;
   large?: boolean;
 }) {
-  const size = (large ? 44 : 40) * messageScale;
+  const size = (large ? 44 : 40) * messageScale * avatarScale;
   const avatarLoaded = loadedAvatars.has(name);
 
   return (
@@ -400,7 +403,7 @@ function AvatarCircle({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: `${(large ? 14 : 12) * messageScale}px`,
+            fontSize: `${(large ? 14 : 12) * messageScale * Math.max(avatarScale, 0.85)}px`,
             fontWeight: "bold",
           }}
         >
@@ -419,6 +422,7 @@ function renderChatFeed({
   chatHeightScale,
   isProjectionMode,
   messageScale,
+  avatarScale,
   profileColor,
   bubbleColor,
   bubbleTextColor,
@@ -435,6 +439,7 @@ function renderChatFeed({
   chatHeightScale: number;
   isProjectionMode: boolean;
   messageScale: number;
+  avatarScale: number;
   profileColor: string;
   bubbleColor: string;
   bubbleTextColor: string;
@@ -497,6 +502,7 @@ function renderChatFeed({
                       name={message.name}
                       profileColor={profileColor}
                       messageScale={messageScale}
+                      avatarScale={avatarScale}
                       loadedAvatars={loadedAvatars}
                     />
 
@@ -572,6 +578,7 @@ export default function EurekaDayChatSimulator() {
       nameFontSize: 12,
       chatHeightScale: 1,
       messageScale: 1,
+      avatarScale: 1,
       chatWidth: 820,
       isProjectionMode: false,
     }),
@@ -596,6 +603,7 @@ export default function EurekaDayChatSimulator() {
     () => readSharedState(defaultSharedState).chatHeightScale
   );
   const [messageScale, setMessageScale] = useState(() => readSharedState(defaultSharedState).messageScale);
+  const [avatarScale, setAvatarScale] = useState(() => readSharedState(defaultSharedState).avatarScale);
   const [chatWidth, setChatWidth] = useState(() => readSharedState(defaultSharedState).chatWidth);
   const [isProjectionMode, setIsProjectionMode] = useState(
     () => readSharedState(defaultSharedState).isProjectionMode
@@ -667,6 +675,7 @@ export default function EurekaDayChatSimulator() {
         nameFontSize,
         chatHeightScale,
         messageScale,
+        avatarScale,
         chatWidth,
         isProjectionMode,
       }),
@@ -683,6 +692,7 @@ export default function EurekaDayChatSimulator() {
       nameFontSize,
       chatHeightScale,
       messageScale,
+      avatarScale,
       chatWidth,
       isProjectionMode,
     ]
@@ -702,6 +712,7 @@ export default function EurekaDayChatSimulator() {
     setNameFontSize(next.nameFontSize);
     setChatHeightScale(next.chatHeightScale);
     setMessageScale(next.messageScale);
+    setAvatarScale(next.avatarScale);
     setChatWidth(next.chatWidth);
     setIsProjectionMode(next.isProjectionMode);
 
@@ -916,6 +927,7 @@ export default function EurekaDayChatSimulator() {
           chatHeightScale,
           isProjectionMode: true,
           messageScale,
+          avatarScale,
           profileColor,
           bubbleColor,
           bubbleTextColor,
@@ -1023,6 +1035,7 @@ export default function EurekaDayChatSimulator() {
                             name={currentMessage.name}
                             profileColor={profileColor}
                             messageScale={messageScale}
+                            avatarScale={avatarScale}
                             loadedAvatars={loadedAvatars}
                             large
                           />
@@ -1099,6 +1112,19 @@ export default function EurekaDayChatSimulator() {
                       step={0.05}
                       value={[messageScale]}
                       onValueChange={(v: number[]) => setMessageScale(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">
+                      Avatar Size: {avatarScale.toFixed(2)}x
+                    </div>
+                    <Slider
+                      min={0.6}
+                      max={2}
+                      step={0.05}
+                      value={[avatarScale]}
+                      onValueChange={(v: number[]) => setAvatarScale(v[0])}
                     />
                   </div>
 
@@ -1392,6 +1418,17 @@ export default function EurekaDayChatSimulator() {
               />
             </div>
 
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Avatar Size: {avatarScale.toFixed(2)}x</div>
+              <Slider
+                min={0.6}
+                max={2}
+                step={0.05}
+                value={[avatarScale]}
+                onValueChange={(v: number[]) => setAvatarScale(v[0])}
+              />
+            </div>
+
             <div className="flex flex-wrap items-start gap-6">
               <div className="space-y-2">
                 <div className="text-sm font-medium">Chat Bubble Color</div>
@@ -1488,6 +1525,7 @@ export default function EurekaDayChatSimulator() {
           chatHeightScale,
           isProjectionMode,
           messageScale,
+          avatarScale,
           profileColor,
           bubbleColor,
           bubbleTextColor,
