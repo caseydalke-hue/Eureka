@@ -70,6 +70,7 @@ type SharedPresentationState = {
   avatarScale: number;
   chatWidth: number;
   isProjectionMode: boolean;
+  soundVolume: number;
 };
 
 const PRESENTATION_STORAGE_KEY = "eureka-day-chat-presentation-state";
@@ -581,6 +582,7 @@ export default function EurekaDayChatSimulator() {
       avatarScale: 1,
       chatWidth: 820,
       isProjectionMode: false,
+      soundVolume: 0.45,
     }),
     []
   );
@@ -608,6 +610,7 @@ export default function EurekaDayChatSimulator() {
   const [isProjectionMode, setIsProjectionMode] = useState(
     () => readSharedState(defaultSharedState).isProjectionMode
   );
+  const [soundVolume, setSoundVolume] = useState(() => readSharedState(defaultSharedState).soundVolume);
   const [projectionNotice, setProjectionNotice] = useState("");
   const [loadedAvatars, setLoadedAvatars] = useState<Set<string>>(new Set());
 
@@ -678,6 +681,7 @@ export default function EurekaDayChatSimulator() {
         avatarScale,
         chatWidth,
         isProjectionMode,
+        soundVolume,
       }),
     [
       visibleCount,
@@ -695,6 +699,7 @@ export default function EurekaDayChatSimulator() {
       avatarScale,
       chatWidth,
       isProjectionMode,
+      soundVolume,
     ]
   );
 
@@ -715,6 +720,7 @@ export default function EurekaDayChatSimulator() {
     setAvatarScale(next.avatarScale);
     setChatWidth(next.chatWidth);
     setIsProjectionMode(next.isProjectionMode);
+    setSoundVolume(next.soundVolume);
 
     window.setTimeout(() => {
       isApplyingRemoteStateRef.current = false;
@@ -825,12 +831,12 @@ export default function EurekaDayChatSimulator() {
 
   const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>) => {
     const audio = audioRef.current;
-    if (!audio || !hasInteractedRef.current) return;
+    if (!audio || !hasInteractedRef.current || soundVolume <= 0) return;
 
     try {
       audio.pause();
       audio.currentTime = 0;
-      audio.volume = 0.45;
+      audio.volume = soundVolume;
       void audio.play();
     } catch {
       // ignore browser playback failures
@@ -849,7 +855,7 @@ export default function EurekaDayChatSimulator() {
     }
 
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, messages]);
+  }, [visibleCount, messages, soundVolume]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -1070,6 +1076,20 @@ export default function EurekaDayChatSimulator() {
                       step={50}
                       value={[baseDelay]}
                       onValueChange={(v: number[]) => setBaseDelay(v[0])}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Message Sound Volume: {Math.round(soundVolume * 100)}%</div>
+                    <Slider
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={[soundVolume]}
+                      onValueChange={(v: number[]) => {
+                        hasInteractedRef.current = true;
+                        setSoundVolume(v[0]);
+                      }}
                     />
                   </div>
 
@@ -1375,6 +1395,20 @@ export default function EurekaDayChatSimulator() {
                 step={50}
                 value={[baseDelay]}
                 onValueChange={(v: number[]) => setBaseDelay(v[0])}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Message Sound Volume: {Math.round(soundVolume * 100)}%</div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.05}
+                value={[soundVolume]}
+                onValueChange={(v: number[]) => {
+                  hasInteractedRef.current = true;
+                  setSoundVolume(v[0]);
+                }}
               />
             </div>
 
