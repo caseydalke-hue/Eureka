@@ -623,6 +623,8 @@ export default function EurekaDayChatSimulator() {
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
+  const currentSharedStateRef = useRef<SharedPresentationState>(readSharedState(defaultSharedState));
+  const storageWriteTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -704,23 +706,27 @@ export default function EurekaDayChatSimulator() {
   );
 
   const applySharedState = (next: SharedPresentationState) => {
+    const prev = currentSharedStateRef.current;
     isApplyingRemoteStateRef.current = true;
-    setVisibleCount(next.visibleCount);
-    setIsPlaying(next.isPlaying);
-    setBaseDelay(next.baseDelay);
-    setMaxOnScreen(next.maxOnScreen);
-    setBubbleColor(next.bubbleColor);
-    setProfileColor(next.profileColor);
-    setBubbleTextColor(next.bubbleTextColor);
-    setIsBubbleTextBold(next.isBubbleTextBold);
-    setChatFontSize(next.chatFontSize);
-    setNameFontSize(next.nameFontSize);
-    setChatHeightScale(next.chatHeightScale);
-    setMessageScale(next.messageScale);
-    setAvatarScale(next.avatarScale);
-    setChatWidth(next.chatWidth);
-    setIsProjectionMode(next.isProjectionMode);
-    setSoundVolume(next.soundVolume);
+
+    if (prev.visibleCount !== next.visibleCount) setVisibleCount(next.visibleCount);
+    if (prev.isPlaying !== next.isPlaying) setIsPlaying(next.isPlaying);
+    if (prev.baseDelay !== next.baseDelay) setBaseDelay(next.baseDelay);
+    if (prev.maxOnScreen !== next.maxOnScreen) setMaxOnScreen(next.maxOnScreen);
+    if (prev.bubbleColor !== next.bubbleColor) setBubbleColor(next.bubbleColor);
+    if (prev.profileColor !== next.profileColor) setProfileColor(next.profileColor);
+    if (prev.bubbleTextColor !== next.bubbleTextColor) setBubbleTextColor(next.bubbleTextColor);
+    if (prev.isBubbleTextBold !== next.isBubbleTextBold) setIsBubbleTextBold(next.isBubbleTextBold);
+    if (prev.chatFontSize !== next.chatFontSize) setChatFontSize(next.chatFontSize);
+    if (prev.nameFontSize !== next.nameFontSize) setNameFontSize(next.nameFontSize);
+    if (prev.chatHeightScale !== next.chatHeightScale) setChatHeightScale(next.chatHeightScale);
+    if (prev.messageScale !== next.messageScale) setMessageScale(next.messageScale);
+    if (prev.avatarScale !== next.avatarScale) setAvatarScale(next.avatarScale);
+    if (prev.chatWidth !== next.chatWidth) setChatWidth(next.chatWidth);
+    if (prev.isProjectionMode !== next.isProjectionMode) setIsProjectionMode(next.isProjectionMode);
+    if (prev.soundVolume !== next.soundVolume) setSoundVolume(next.soundVolume);
+
+    currentSharedStateRef.current = next;
 
     window.setTimeout(() => {
       isApplyingRemoteStateRef.current = false;
@@ -728,37 +734,61 @@ export default function EurekaDayChatSimulator() {
   };
 
   useEffect(() => {
-    const channel = new BroadcastChannel(PRESENTATION_CHANNEL_NAME);
-    broadcastChannelRef.current = channel;
+    let channel: BroadcastChannel | null = null;
 
-    channel.onmessage = (event) => {
-      if (!event.data) return;
-      applySharedState({ ...defaultSharedState, ...event.data });
-    };
+    if (typeof BroadcastChannel !== "undefined") {
+      channel = new BroadcastChannel(PRESENTATION_CHANNEL_NAME);
+      broadcastChannelRef.current = channel;
 
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== PRESENTATION_STORAGE_KEY || !event.newValue) return;
-      try {
-        const parsed = JSON.parse(event.newValue);
-        applySharedState({ ...defaultSharedState, ...parsed });
-      } catch {
-        // ignore malformed storage updates
-      }
-    };
+      channel.onmessage = (event) => {
+        if (!event.data) return;
+        applySharedState({ ...defaultSharedState, ...event.data });
+      };
+    } else {
+      const onStorage = (event: StorageEvent) => {
+        if (event.key !== PRESENTATION_STORAGE_KEY || !event.newValue) return;
+        try {
+          const parsed = JSON.parse(event.newValue);
+          applySharedState({ ...defaultSharedState, ...parsed });
+        } catch {
+          // ignore malformed storage updates
+        }
+      };
 
-    window.addEventListener("storage", onStorage);
+      window.addEventListener("storage", onStorage);
+
+      return () => {
+        window.removeEventListener("storage", onStorage);
+      };
+    }
 
     return () => {
-      window.removeEventListener("storage", onStorage);
-      channel.close();
+      channel?.close();
       broadcastChannelRef.current = null;
     };
   }, [defaultSharedState]);
 
   useEffect(() => {
+    currentSharedStateRef.current = sharedState;
+
     if (isApplyingRemoteStateRef.current) return;
-    writeSharedState(sharedState);
+
     broadcastChannelRef.current?.postMessage(sharedState);
+
+    if (storageWriteTimerRef.current) {
+      window.clearTimeout(storageWriteTimerRef.current);
+    }
+
+    storageWriteTimerRef.current = window.setTimeout(() => {
+      writeSharedState(sharedState);
+    }, 120);
+
+    return () => {
+      if (storageWriteTimerRef.current) {
+        window.clearTimeout(storageWriteTimerRef.current);
+        storageWriteTimerRef.current = null;
+      }
+    };
   }, [sharedState]);
 
   useEffect(() => {
