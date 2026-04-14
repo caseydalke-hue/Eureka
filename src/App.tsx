@@ -617,8 +617,6 @@ export default function EurekaDayChatSimulator() {
   const dingRef = useRef<HTMLAudioElement | null>(null);
   const emojiRef = useRef<HTMLAudioElement | null>(null);
   const hasInteractedRef = useRef(false);
-  const lastPlayedVisibleCountRef = useRef(0);
-  const lastSoundTriggerRef = useRef(0);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
@@ -813,7 +811,7 @@ export default function EurekaDayChatSimulator() {
         e.preventDefault();
         hasInteractedRef.current = true;
         setIsPlaying(false);
-        setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
+        advanceVisibleCount((count) => Math.min(count + 1, messages.length + 1));
       }
 
       if (mode === "control") {
@@ -821,14 +819,14 @@ export default function EurekaDayChatSimulator() {
           e.preventDefault();
           hasInteractedRef.current = true;
           setIsPlaying(false);
-          setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
+          advanceVisibleCount((count) => Math.min(count + 1, messages.length + 1));
         }
 
         if (e.code === "ArrowLeft") {
           e.preventDefault();
           hasInteractedRef.current = true;
           setIsPlaying(false);
-          setVisibleCount((count) => Math.max(count - 1, 0));
+          advanceVisibleCount((count) => Math.max(count - 1, 0), { playSoundOnForward: false });
         }
       }
     };
@@ -884,36 +882,32 @@ export default function EurekaDayChatSimulator() {
     }
   };
 
-  useEffect(() => {
-    if (mode === "display") {
-      lastPlayedVisibleCountRef.current = visibleCount;
-      return;
+  const maybePlayMessageSound = (nextCount: number) => {
+    if (mode === "display") return;
+    if (nextCount <= 0 || nextCount > messages.length) return;
+
+    const nextMessage = messages[nextCount - 1];
+    if (nextMessage?.type === "reaction") {
+      playSound(emojiRef);
+    } else {
+      playSound(dingRef);
     }
+  };
 
-    if (visibleCount < lastPlayedVisibleCountRef.current) {
-      lastPlayedVisibleCountRef.current = visibleCount;
-      lastSoundTriggerRef.current = 0;
-      return;
-    }
+  const advanceVisibleCount = (updater: number | ((count: number) => number), options?: { playSoundOnForward?: boolean }) => {
+    const shouldPlaySound = options?.playSoundOnForward ?? true;
 
-    if (
-      visibleCount > lastPlayedVisibleCountRef.current &&
-      visibleCount <= messages.length &&
-      lastSoundTriggerRef.current !== visibleCount
-    ) {
-      const newMessage = messages[visibleCount - 1];
+    setVisibleCount((count) => {
+      const rawNext = typeof updater === "function" ? updater(count) : updater;
+      const next = Math.max(0, Math.min(rawNext, messages.length + 1));
 
-      if (newMessage?.type === "reaction") {
-        playSound(emojiRef);
-      } else {
-        playSound(dingRef);
+      if (shouldPlaySound && next > count && next <= messages.length) {
+        maybePlayMessageSound(next);
       }
 
-      lastSoundTriggerRef.current = visibleCount;
-    }
-
-    lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, messages, soundVolume, mode]);
+      return next;
+    });
+  };
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -923,7 +917,7 @@ export default function EurekaDayChatSimulator() {
     const delay = baseDelay + Math.floor(Math.random() * 180);
 
     timerRef.current = window.setTimeout(() => {
-      setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
+      advanceVisibleCount((count) => Math.min(count + 1, messages.length + 1));
     }, delay);
   };
 
@@ -1037,7 +1031,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount((count) => Math.max(count - 1, 0));
+                  advanceVisibleCount((count) => Math.max(count - 1, 0), { playSoundOnForward: false });
                 }}
                 className="rounded-2xl bg-white text-black hover:bg-neutral-200"
               >
@@ -1048,7 +1042,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
+                  advanceVisibleCount((count) => Math.min(count + 1, messages.length + 1));
                 }}
                 className="rounded-2xl bg-white text-black hover:bg-neutral-200"
               >
@@ -1059,8 +1053,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount(0);
-                  lastPlayedVisibleCountRef.current = 0;
+                  advanceVisibleCount(0, { playSoundOnForward: false });
                 }}
                 className="rounded-2xl bg-white text-black hover:bg-neutral-200"
               >
@@ -1333,7 +1326,7 @@ export default function EurekaDayChatSimulator() {
                       onClick={() => {
                         hasInteractedRef.current = true;
                         setIsPlaying(false);
-                        setVisibleCount(index + 1);
+                        advanceVisibleCount(index + 1, { playSoundOnForward: false });
                       }}
                       className={`w-full text-left rounded-2xl border p-4 transition ${cardClass}`}
                     >
@@ -1405,7 +1398,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount((count) => Math.min(count + 1, messages.length + 1));
+                  advanceVisibleCount((count) => Math.min(count + 1, messages.length + 1));
                 }}
                 className="rounded-2xl"
               >
@@ -1417,8 +1410,7 @@ export default function EurekaDayChatSimulator() {
                 onClick={() => {
                   hasInteractedRef.current = true;
                   setIsPlaying(false);
-                  setVisibleCount(0);
-                  lastPlayedVisibleCountRef.current = 0;
+                  advanceVisibleCount(0, { playSoundOnForward: false });
                 }}
                 className="rounded-2xl"
               >
