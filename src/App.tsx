@@ -622,6 +622,7 @@ export default function EurekaDayChatSimulator() {
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
   const currentSharedStateRef = useRef<SharedPresentationState>(readSharedState(defaultSharedState));
   const storageWriteTimerRef = useRef<number | null>(null);
+  const visibleCountRef = useRef(visibleCount);
 
   useEffect(() => {
     let cancelled = false;
