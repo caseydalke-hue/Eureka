@@ -849,6 +849,10 @@ export default function EurekaDayChatSimulator() {
     };
   }, []);
 
+  useEffect(() => {
+    visibleCountRef.current = visibleCount;
+  }, [visibleCount]);
+
   const isBlackScreen = visibleCount > messages.length;
 
   const visibleMessages = useMemo(
@@ -894,19 +898,25 @@ export default function EurekaDayChatSimulator() {
     }
   };
 
-  const advanceVisibleCount = (updater: number | ((count: number) => number), options?: { playSoundOnForward?: boolean }) => {
+  const getNextVisibleCount = (currentCount: number, updater: number | ((count: number) => number)) => {
+    const rawNext = typeof updater === "function" ? updater(currentCount) : updater;
+    return Math.max(0, Math.min(rawNext, messages.length + 1));
+  };
+
+  const advanceVisibleCount = (
+    updater: number | ((count: number) => number),
+    options?: { playSoundOnForward?: boolean }
+  ) => {
     const shouldPlaySound = options?.playSoundOnForward ?? true;
+    const currentCount = visibleCountRef.current;
+    const nextCount = getNextVisibleCount(currentCount, updater);
 
-    setVisibleCount((count) => {
-      const rawNext = typeof updater === "function" ? updater(count) : updater;
-      const next = Math.max(0, Math.min(rawNext, messages.length + 1));
+    if (shouldPlaySound && nextCount > currentCount && nextCount <= messages.length) {
+      maybePlayMessageSound(nextCount);
+    }
 
-      if (shouldPlaySound && next > count && next <= messages.length) {
-        maybePlayMessageSound(next);
-      }
-
-      return next;
-    });
+    visibleCountRef.current = nextCount;
+    setVisibleCount(nextCount);
   };
 
   const scheduleNext = () => {
