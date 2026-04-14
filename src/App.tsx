@@ -618,6 +618,7 @@ export default function EurekaDayChatSimulator() {
   const emojiRef = useRef<HTMLAudioElement | null>(null);
   const hasInteractedRef = useRef(false);
   const lastPlayedVisibleCountRef = useRef(0);
+  const lastSoundTriggerRef = useRef(0);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const isApplyingRemoteStateRef = useRef(false);
   const currentQueueItemRef = useRef<HTMLButtonElement | null>(null);
@@ -884,7 +885,22 @@ export default function EurekaDayChatSimulator() {
   };
 
   useEffect(() => {
-    if (visibleCount > lastPlayedVisibleCountRef.current && visibleCount <= messages.length) {
+    if (mode === "display") {
+      lastPlayedVisibleCountRef.current = visibleCount;
+      return;
+    }
+
+    if (visibleCount < lastPlayedVisibleCountRef.current) {
+      lastPlayedVisibleCountRef.current = visibleCount;
+      lastSoundTriggerRef.current = 0;
+      return;
+    }
+
+    if (
+      visibleCount > lastPlayedVisibleCountRef.current &&
+      visibleCount <= messages.length &&
+      lastSoundTriggerRef.current !== visibleCount
+    ) {
       const newMessage = messages[visibleCount - 1];
 
       if (newMessage?.type === "reaction") {
@@ -892,10 +908,12 @@ export default function EurekaDayChatSimulator() {
       } else {
         playSound(dingRef);
       }
+
+      lastSoundTriggerRef.current = visibleCount;
     }
 
     lastPlayedVisibleCountRef.current = visibleCount;
-  }, [visibleCount, messages, soundVolume]);
+  }, [visibleCount, messages, soundVolume, mode]);
 
   const scheduleNext = () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
